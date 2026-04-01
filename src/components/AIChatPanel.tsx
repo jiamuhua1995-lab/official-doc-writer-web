@@ -36,10 +36,26 @@ export default function AIChatPanel({ documentType, body, title, onApplyContent,
     abortRef.current = controller
 
     try {
-      const res = await fetch('/api/ai', {
+      const API_KEY = 'sk-wvuoaoeqqciildnwnqkoakpyuyyojszlblatbyvfiamscqsu'
+      const BASE_URL = 'https://api.siliconflow.cn/v1'
+      const MODEL = 'deepseek-ai/DeepSeek-V3'
+
+      const res = await fetch(`${BASE_URL}/chat/completions`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ systemPrompt, userPrompt }),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: MODEL,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userPrompt },
+          ],
+          stream: true,
+          temperature: 0.7,
+          max_tokens: 4096,
+        }),
         signal: controller.signal,
       })
 
