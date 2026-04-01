@@ -31,7 +31,7 @@ export default function HomePage() {
       createdAt: now, updatedAt: now, isDeleted: false,
     }
     saveDocument(doc)
-    router.push(`/editor/${doc.id}`)
+    router.push(`/editor?id=${doc.id}`)
   }
 
   function handleDelete(id: string) {
@@ -118,7 +118,7 @@ export default function HomePage() {
             <div
               key={doc.id}
               className="bg-white rounded-xl p-4 border border-[var(--border)] hover:shadow-md transition cursor-pointer group"
-              onClick={() => router.push(`/editor/${doc.id}`)}
+              onClick={() => router.push(`/editor?id=${doc.id}`)}
             >
               <div className="flex items-start justify-between">
                 <div className="flex-1 min-w-0">
