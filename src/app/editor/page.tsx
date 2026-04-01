@@ -8,8 +8,9 @@ import DocumentEditor from '@/components/DocumentEditor'
 import AIChatPanel from '@/components/AIChatPanel'
 import PhrasePanel from '@/components/PhrasePanel'
 import ExportButton from '@/components/ExportButton'
+import PreviewPanel from '@/components/PreviewPanel'
 
-type Tab = 'doc' | 'ai'
+type Tab = 'doc' | 'ai' | 'preview'
 
 function EditorContent() {
   const searchParams = useSearchParams()
@@ -39,6 +40,7 @@ function EditorContent() {
   const handleChange = useCallback((updated: Document) => {
     setDoc(updated)
     docRef.current = updated
+    saveDocument(updated)
   }, [])
 
   function handleBack() {
@@ -77,6 +79,12 @@ function EditorContent() {
           📝 编辑
         </button>
         <button
+          onClick={() => setTab('preview')}
+          className={`flex-1 py-2.5 text-sm font-medium transition ${tab === 'preview' ? 'text-[var(--primary)] border-b-2 border-[var(--primary)]' : 'text-[var(--text-secondary)]'}`}
+        >
+          👁 预览
+        </button>
+        <button
           onClick={() => setTab('ai')}
           className={`flex-1 py-2.5 text-sm font-medium transition ${tab === 'ai' ? 'text-[var(--primary)] border-b-2 border-[var(--primary)]' : 'text-[var(--text-secondary)]'}`}
         >
@@ -88,11 +96,14 @@ function EditorContent() {
       <div className="flex-1 overflow-hidden">
         {tab === 'doc' ? (
           <DocumentEditor doc={doc} onChange={handleChange} onShowPhrases={() => setShowPhrases(true)} />
+        ) : tab === 'preview' ? (
+          <PreviewPanel doc={doc} />
         ) : (
           <AIChatPanel
             documentType={doc.type}
             body={doc.body}
             title={doc.title}
+            documentId={doc.id}
             onApplyContent={(content) => handleChange({ ...doc, body: content, updatedAt: new Date().toISOString() })}
             onApplyTitle={(title) => handleChange({ ...doc, title, updatedAt: new Date().toISOString() })}
           />
