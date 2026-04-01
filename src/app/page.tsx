@@ -1,8 +1,8 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Document, DocumentType, DOCUMENT_TYPES, DOC_TYPE_ICONS } from '@/lib/types'
-import { loadDocuments, saveDocument, deleteDocument } from '@/lib/storage'
+import { loadDocuments, saveDocument, deleteDocument, exportAllData, importAllData } from '@/lib/storage'
 import { getTemplateStructure } from '@/lib/templates'
 import { v4 as uuid } from 'uuid'
 import { useRouter } from 'next/navigation'
@@ -12,7 +12,9 @@ export default function HomePage() {
   const [showNewDoc, setShowNewDoc] = useState(false)
   const [filterType, setFilterType] = useState<DocumentType | null>(null)
   const [search, setSearch] = useState('')
+  const [backupMsg, setBackupMsg] = useState('')
   const router = useRouter()
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => { setDocuments(loadDocuments()) }, [])
 
@@ -47,6 +49,38 @@ export default function HomePage() {
     setDocuments(loadDocuments())
   }
 
+  function handleBackup() {
+    const data = exportAllData()
+    const blob = new Blob([data], { type: 'application/json;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    const date = new Date().toISOString().slice(0, 10).replace(/-/g, '')
+    a.href = url
+    a.download = `公文备份_${date}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+    setBackupMsg('✅ 备份成功，文件已保存')
+    setTimeout(() => setBackupMsg(''), 3000)
+  }
+
+  function handleRestore(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = () => {
+      try {
+        const count = importAllData(reader.result as string)
+        setDocuments(loadDocuments())
+        setBackupMsg(`✅ 恢复成功，已导入 ${count} 篇公文`)
+      } catch {
+        setBackupMsg('❌ 文件格式不正确，请选择正确的备份文件')
+      }
+      setTimeout(() => setBackupMsg(''), 4000)
+    }
+    reader.readAsText(file)
+    e.target.value = ''
+  }
+
   return (
     <div className="max-w-4xl mx-auto px-4 py-8">
       {/* Header */}
@@ -61,6 +95,27 @@ export default function HomePage() {
         >
           + 新建公文
         </button>
+      </div>
+
+      {/* 数据备份恢复 */}
+      <div className="flex items-center gap-3 mb-6 p-4 bg-white rounded-xl border border-[var(--border)]">
+        <span className="text-sm text-[var(--text-secondary)]">💾 数据管理</span>
+        <button
+          onClick={handleBackup}
+          className="px-4 py-2 text-sm rounded-lg bg-green-50 text-green-700 border border-green-200 hover:bg-green-100 transition font-medium"
+        >
+          📥 备份数据
+        </button>
+        <button
+          onClick={() => fileInputRef.current?.click()}
+          className="px-4 py-2 text-sm rounded-lg bg-orange-50 text-orange-700 border border-orange-200 hover:bg-orange-100 transition font-medium"
+        >
+          📤 恢复数据
+        </button>
+        <input ref={fileInputRef} type="file" accept=".json" onChange={handleRestore} className="hidden" />
+        {backupMsg && (
+          <span className="text-sm font-medium ml-2">{backupMsg}</span>
+        )}
       </div>
 
       {/* 新建公文弹窗 */}
