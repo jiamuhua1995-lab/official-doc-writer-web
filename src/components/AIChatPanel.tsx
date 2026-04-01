@@ -13,21 +13,61 @@ interface Props {
   documentType: DocumentType
   body: string
   title: string
+  documentId: string
   onApplyContent: (content: string) => void
   onApplyTitle: (title: string) => void
 }
 
-export default function AIChatPanel({ documentType, body, title, onApplyContent, onApplyTitle }: Props) {
+const CHAT_STORAGE_PREFIX = 'odw_chat_'
+
+function loadChat(docId: string): ChatMessage[] {
+  if (typeof window === 'undefined' || !docId) return []
+  try {
+    const raw = localStorage.getItem(CHAT_STORAGE_PREFIX + docId)
+    return raw ? JSON.parse(raw) : []
+  } catch { return [] }
+}
+
+function saveChat(docId: string, messages: ChatMessage[]) {
+  if (typeof window === 'undefined' || !docId) return
+  localStorage.setItem(CHAT_STORAGE_PREFIX + docId, JSON.stringify(messages))
+}
+
+export default function AIChatPanel({ documentType, body, title, documentId, onApplyContent, onApplyTitle }: Props) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
   const [isGenerating, setIsGenerating] = useState(false)
   const [streamContent, setStreamContent] = useState('')
   const abortRef = useRef<AbortController | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
+  const initRef = useRef(false)
+
+  // 初始化加载对话记录
+  useEffect(() => {
+    if (!initRef.current && documentId) {
+      const saved = loadChat(documentId)
+      if (saved.length > 0) setMessages(saved)
+      initRef.current = true
+    }
+  }, [documentId])
+
+  // 对话变化时持久化
+  useEffect(() => {
+    if (initRef.current && documentId && messages.length > 0) {
+      saveChat(documentId, messages)
+    }
+  }, [messages, documentId])
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
   }, [messages, streamContent])
+
+  const addMessages = useCallback((newMsgs: ChatMessage[]) => {
+    setMessages((prev) => {
+      const updated = [...prev, ...newMsgs]
+      return updated
+    })
+  }, [])
 
   const streamAI = useCallback(async (systemPrompt: string, userPrompt: string, onDone: (result: string) => void) => {
     setIsGenerating(true)
@@ -92,14 +132,14 @@ export default function AIChatPanel({ documentType, body, title, onApplyContent,
       onDone(accumulated)
     } catch (err) {
       if ((err as Error).name !== 'AbortError') {
-        setMessages((prev) => [...prev, { role: 'ai', text: `生成失败：${(err as Error).message}` }])
+        addMessages([{ role: 'ai', text: `生成失败：${(err as Error).message}` }])
       }
     } finally {
       setIsGenerating(false)
       setStreamContent('')
       abortRef.current = null
     }
-  }, [])
+  }, [addMessages])
 
   function cancel() {
     abortRef.current?.abort()
@@ -110,12 +150,12 @@ export default function AIChatPanel({ documentType, body, title, onApplyContent,
   function sendMessage() {
     const trimmed = input.trim()
     if (!trimmed) return
-    setMessages((prev) => [...prev, { role: 'user', text: trimmed }])
+    addMessages([{ role: 'user', text: trimmed }])
     setInput('')
     const sys = draftSystemPrompt(documentType)
     const usr = buildDraftUserPrompt(documentType, trimmed, '', [])
     streamAI(sys, usr, (result) => {
-      setMessages((prev) => [...prev, { role: 'ai', text: result }])
+      addMessages([{ role: 'ai', text: result }])
       onApplyContent(result)
       autoTitle(result)
     })
@@ -123,11 +163,11 @@ export default function AIChatPanel({ documentType, body, title, onApplyContent,
 
   function generateDraft() {
     const topic = title || '请根据公文类型生成初稿'
-    setMessages((prev) => [...prev, { role: 'user', text: `生成${documentType}初稿：${topic}` }])
+    addMessages([{ role: 'user', text: `生成${documentType}初稿：${topic}` }])
     const sys = draftSystemPrompt(documentType)
     const usr = buildDraftUserPrompt(documentType, topic, '', [])
     streamAI(sys, usr, (result) => {
-      setMessages((prev) => [...prev, { role: 'ai', text: result }])
+      addMessages([{ role: 'ai', text: result }])
       onApplyContent(result)
       autoTitle(result)
     })
@@ -135,39 +175,44 @@ export default function AIChatPanel({ documentType, body, title, onApplyContent,
 
   function polishBody() {
     if (!body) {
-      setMessages((prev) => [...prev, { role: 'ai', text: '正文为空，请先输入或生成内容' }])
+      addMessages([{ role: 'ai', text: '正文为空，请先输入或生成内容' }])
       return
     }
-    setMessages((prev) => [...prev, { role: 'user', text: '润色当前正文' }])
+    addMessages([{ role: 'user', text: '润色当前正文' }])
     const sys = polishSystemPrompt(documentType)
     const usr = `请对以下公文内容进行润色优化：\n\n${body}`
     streamAI(sys, usr, (result) => {
-      setMessages((prev) => [...prev, { role: 'ai', text: result }])
+      addMessages([{ role: 'ai', text: result }])
       onApplyContent(result)
     })
   }
 
   function continueWriting() {
     if (!body) {
-      setMessages((prev) => [...prev, { role: 'ai', text: '正文为空，请先输入或生成内容' }])
+      addMessages([{ role: 'ai', text: '正文为空，请先输入或生成内容' }])
       return
     }
-    setMessages((prev) => [...prev, { role: 'user', text: '续写正文' }])
+    addMessages([{ role: 'user', text: '续写正文' }])
     const sys = continueSystemPrompt(documentType)
     const usr = `请基于以下已有内容继续撰写：\n\n${body}`
     streamAI(sys, usr, (result) => {
-      setMessages((prev) => [...prev, { role: 'ai', text: result }])
+      addMessages([{ role: 'ai', text: result }])
       onApplyContent(body + '\n' + result)
     })
   }
 
   function generateTitle() {
     if (!body) {
-      setMessages((prev) => [...prev, { role: 'ai', text: '正文为空，请先输入或生成内容' }])
+      addMessages([{ role: 'ai', text: '正文为空，请先输入或生成内容' }])
       return
     }
-    setMessages((prev) => [...prev, { role: 'user', text: '根据正文生成标题' }])
+    addMessages([{ role: 'user', text: '根据正文生成标题' }])
     autoTitle(body)
+  }
+
+  function clearChat() {
+    setMessages([])
+    if (documentId) localStorage.removeItem(CHAT_STORAGE_PREFIX + documentId)
   }
 
   function autoTitle(content: string) {
@@ -178,7 +223,7 @@ export default function AIChatPanel({ documentType, body, title, onApplyContent,
       const clean = result.trim().replace(/["""]/g, '')
       if (clean && clean.length <= 50) {
         onApplyTitle(clean)
-        setMessages((prev) => [...prev, { role: 'ai', text: `已生成标题：${clean}` }])
+        addMessages([{ role: 'ai', text: `已生成标题：${clean}` }])
       }
     })
   }
@@ -229,6 +274,9 @@ export default function AIChatPanel({ documentType, body, title, onApplyContent,
           <QuickBtn label="生成标题" icon="📝" disabled={isGenerating} onClick={generateTitle} />
           <QuickBtn label="润色正文" icon="🪄" disabled={isGenerating} onClick={polishBody} />
           <QuickBtn label="续写" icon="📖" disabled={isGenerating} onClick={continueWriting} />
+          {messages.length > 0 && (
+            <QuickBtn label="清空对话" icon="🗑️" disabled={isGenerating} onClick={clearChat} />
+          )}
         </div>
         <div className="flex gap-2">
           <input
